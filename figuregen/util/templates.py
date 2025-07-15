@@ -4,6 +4,8 @@ import numpy as np
 from . import image
 from .. import figuregen as fig
 
+import copy
+
 class CropComparison:
     """ Matrix of cropped and zoomed images next to a reference image.
 
@@ -13,8 +15,8 @@ class CropComparison:
     Additional content can be added (or removed) by the user simply by accessing the individual
     grids in the generated list of grids.
     """
-    def __init__(self, reference_image, method_images, crops: List[image.Cropbox],
-                 scene_name = None, method_names = None, use_latex = False):
+    def __init__(self, reference_image, method_images, crops: List[image.Cropbox], square_offset = 0, hide_title = False,
+                 scene_name = None, method_names = None, use_latex = False, metric_name = "relMSE"):
         """ Shows a reference image next to a grid of crops from different methods.
 
         Args:
@@ -32,6 +34,7 @@ class CropComparison:
         self._reference_image = reference_image
         self._method_images = method_images
         self.use_latex = use_latex
+        self.metric_name = metric_name
 
         self._errors = [
             self.compute_error(reference_image, m)
@@ -47,9 +50,26 @@ class CropComparison:
 
         # Create the grid for the reference image
         self._ref_grid = fig.Grid(1, 1)
-        self._ref_grid[0, 0].image = self.tonemap(reference_image)
+
+        # Crop the reference image to triangle and adjust the marker position
+        square_ref = reference_image[:]
+        sq_y, sq_x = 0, 0
+        if (square_ref.shape[0] != square_ref.shape[1]):
+            if (square_ref.shape[0] > square_ref.shape[1]):
+                square_ref = square_ref[square_offset:square_ref.shape[1]+square_offset, :]
+                sq_y = square_offset
+            else:
+                square_ref = square_ref[:, square_offset:square_ref.shape[0]+square_offset]
+                sq_x = square_offset
+
+        self._ref_grid[0, 0].image = self.tonemap(square_ref)
         for crop in crops:
-            self._ref_grid[0, 0].set_marker(crop.marker_pos, crop.marker_size, color=[255,255,255])
+            square_crop = copy.deepcopy(crop)
+            square_crop.left -= sq_x
+            square_crop.right -= sq_x
+            square_crop.top -= sq_y
+            square_crop.bottom -= sq_y
+            self._ref_grid[0, 0].set_marker(square_crop.marker_pos, square_crop.marker_size, color=square_crop.color)
 
         if scene_name is not None:
             self._ref_grid.set_col_titles("bottom", [scene_name])
@@ -57,9 +77,19 @@ class CropComparison:
         # Create the grid with the crops
         self._crop_grid = fig.Grid(num_cols=len(method_images) + 1, num_rows=len(crops))
         for row in range(len(crops)):
+            crop = crops[row]
             self._crop_grid[row, 0].image = self.tonemap(crops[row].crop(reference_image))
+            self._crop_grid[row, 0].set_frame(linewidth=0.8, color=crop.color)
             for col in range(len(method_images)):
-                self._crop_grid[row, col + 1].image = self.tonemap(crops[row].crop(method_images[col]))
+                e = self._crop_grid[row, col + 1]
+                error = self._crop_errors[row][col]
+                e.image = self.tonemap(crops[row].crop(method_images[col]))
+                e.set_frame(linewidth=0.8, color=crop.color)
+                e.set_label(
+                    "{:.3f}".format(error), 'bottom_right',
+                    width_mm=5, height_mm=2.5, offset_mm=[0.4, 0.4], fontsize=6,
+                    bg_color=[20,20,20], txt_color=[255,255,255], txt_padding_mm=0.2
+                )
 
         # Put error values underneath the columns
         error_strings = [ f"{self.error_metric_name}" ]
@@ -70,9 +100,10 @@ class CropComparison:
         crop_layout.row_space = 1
         crop_layout.column_space = 1
         crop_layout.column_titles[fig.BOTTOM] = fig.TextFieldLayout(fontsize=8, size=2.8, offset=0.5)
+        crop_layout.padding[fig.BOTTOM] = 1
 
         # If given, show method names on top
-        if method_names is not None:
+        if method_names is not None and not hide_title:
             self._crop_grid.set_col_titles("top", method_names)
             crop_layout.column_titles[fig.TOP] = fig.TextFieldLayout(fontsize=8, size=2.8, offset=0.25)
 
@@ -84,10 +115,10 @@ class CropComparison:
 
     @property
     def error_metric_name(self) -> str:
-        return "relMSE"
+        return self.metric_name
 
     def compute_error(self, reference_image, method_image) -> Tuple[str, List[float]]:
-        return image.relative_mse(method_image, reference_image)
+        return image.get_metric_func(self.metric_name)(method_image, reference_image)
 
     def error_string(self, index: int, errors: List[float]):
         """ Generates the human-readable error string for the i-th element in a list of error values.
@@ -97,11 +128,11 @@ class CropComparison:
             errors: list of error values, one per method, in order
         """
         if self.use_latex and index == np.argmin(errors):
-            return f"$\\mathbf{{{errors[index]:.2f} ({errors[index]/errors[0]:.2f}\\times)}}$"
+            return f"$\\mathbf{{{errors[index]:.3f} ({errors[index]/errors[0]:.3f}\\times)}}$"
         elif self.use_latex:
-            return f"${errors[index]:.2f} ({errors[index]/errors[0]:.2f}\\times)$"
+            return f"${errors[index]:.3f} ({errors[index]/errors[0]:.3f}\\times)$"
         else:
-            return f"{errors[index]:.2f} ({errors[index]/errors[0]:.2f}x)"
+            return f"{errors[index]:.3f} ({errors[index]/errors[0]:.3f}x)"
 
     @property
     def crop_errors(self) -> List[List[float]]:

@@ -15,7 +15,7 @@ def crop(img, left, top, width, height):
         return img[top:top+height,left:left+width]
 
 class Cropbox:
-    def __init__(self, top, left, height, width, scale=1):
+    def __init__(self, top, left, height, width, scale=1, color=[255, 0, 0]):
         self.top = top
         self.left = left
         self.bottom = top + height
@@ -23,6 +23,7 @@ class Cropbox:
         self.height = height
         self.width = width
         self.scale = scale
+        self.color = color
 
     def crop(self, image):
         c = crop(image, self.left, self.top, self.width, self.height)
@@ -217,3 +218,30 @@ def smape(img, ref):
     ''' Computes the symmetric mean absolute percentage error
     '''
     return np.average(sape(img,ref))
+
+def mape(img, ref, epsilon=0.01, discard=0.001):
+    num = int(img.shape[0] * img.shape[1] * (1 - discard))
+    e = np.abs(img - ref) / (ref + epsilon)
+    e = np.mean(e, axis=2) if img.ndim == 3 else e
+    e = np.sort(e.reshape(-1))[:num]
+    return np.mean(e)
+
+def get_metric_func(metric_name: str):
+    if metric_name == "SE":
+        return squared_error
+    elif metric_name == "relSE":
+        return relative_squared_error
+    elif metric_name == "MSE":
+        return mse
+    elif metric_name == "relMSE":
+        return relative_mse
+    elif metric_name == "relMSE_outlier_rejection":
+        return relative_mse_outlier_rejection
+    elif metric_name == "SAPE":
+        return sape
+    elif metric_name == "SMAPE":
+        return smape
+    elif metric_name == "MAPE":
+        return mape
+    else:
+        raise ValueError(f"Unknown metric: {metric_name}")

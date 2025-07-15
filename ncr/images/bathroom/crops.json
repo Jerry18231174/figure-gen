@@ -1,0 +1,20 @@
+{
+    "closeups": [
+        {
+            "top": 370,
+            "left": 730,
+            "height": 96,
+            "width": 128,
+            "scale": 5
+        },
+        {
+            "top": 580,
+            "left": 250,
+            "height": 96,
+            "width": 128,
+            "scale": 5
+        }
+    ],
+    "square_axis": 1,
+    "square_offset": 0
+}
